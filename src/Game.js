@@ -12,6 +12,7 @@ import { LevelSystem } from './systems/LevelSystem.js';
 import { ScreenManager, SCREENS } from './ui/ScreenManager.js';
 import { MenuScreen } from './ui/MenuScreen.js';
 import { ResultScreen } from './ui/ResultScreen.js';
+import { DPad } from './systems/DPad.js';
 
 const FIXED_DT = 1000 / 60;
 
@@ -25,6 +26,7 @@ export class Game {
     this.screenManager = new ScreenManager(this.eventBus);
     this.menuScreen = new MenuScreen(this.eventBus);
     this.resultScreen = new ResultScreen();
+    this.dpad = new DPad();
 
     this.saveData = Storage.load();
     this.currentLevel = 1;
@@ -69,6 +71,7 @@ export class Game {
       if (this.screenManager.is(SCREENS.GAME) && this.maze) {
         this.renderer.computeLayout(this.maze);
         this.renderer.drawStatic(this.maze);
+        this.dpad.layout(this.renderer.width, this.renderer.height);
       } else if (this.screenManager.is(SCREENS.MENU)) {
         this.showMenu();
       }
@@ -79,6 +82,7 @@ export class Game {
   showMenu() {
     this._stopLoop();
     this.input.disable();
+    this.dpad.disable();
     this.resultScreen.disableInput(this.renderer.uiCanvas);
     this.screenManager.switchTo(SCREENS.MENU);
 
@@ -110,6 +114,10 @@ export class Game {
 
     this.timer.start(timeLimit);
     this.input.enable();
+    this.dpad.layout(this.renderer.width, this.renderer.height);
+    this.dpad.enable(this.renderer.uiCanvas, (dir) => {
+      this.input.moveQueue.push(dir);
+    });
     this.screenManager.switchTo(SCREENS.GAME);
 
     this.lastUITime = -1;
@@ -119,6 +127,7 @@ export class Game {
   _endLevel(timeout) {
     this._stopLoop();
     this.input.disable();
+    this.dpad.disable();
     this.timer.stop();
 
     const success = !timeout && this.heartsCollected >= this.levelConfig.requiredHearts;
@@ -210,7 +219,7 @@ export class Game {
 
     // UI mise à jour chaque seconde
     const sec = Math.floor(this.timer.remaining);
-    if (sec !== this.lastUITime) {
+    if (sec !== this.lastUITime || this.dpad.visible) {
       this.lastUITime = sec;
       this.renderer.drawUI({
         level: this.currentLevel,
@@ -218,6 +227,7 @@ export class Game {
         heartsCollected: this.heartsCollected,
         heartsRequired: this.levelConfig.requiredHearts,
       });
+      this.dpad.draw(this.renderer.uiCtx);
     }
   }
 }

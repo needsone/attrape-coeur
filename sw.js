@@ -17,6 +17,7 @@ const STATIC_ASSETS = [
   './src/systems/InputSystem.js',
   './src/systems/TimerSystem.js',
   './src/systems/CollisionSystem.js',
+  './src/systems/DPad.js',
   './src/systems/LevelSystem.js',
   './src/ui/ScreenManager.js',
   './src/ui/MenuScreen.js',
