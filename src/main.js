@@ -2,7 +2,7 @@ import { Game } from './Game.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register(new URL('../sw.js', import.meta.url)).catch(() => {});
   });
 }
 
