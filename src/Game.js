@@ -215,7 +215,7 @@ export class Game {
     const dir = this.input.getDirection();
     if (dir !== null && this.maze.canMove(this.player.row, this.player.col, dir)) {
       this.player.moveTo(dir);
-      this.collision.check(this.player, this.maze, this.hearts);
+      this.collision.check(this.player, this.maze, this.hearts, this.levelConfig.requiredHearts);
     }
   }
 
