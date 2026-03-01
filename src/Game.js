@@ -40,6 +40,7 @@ export class Game {
     this.lastTime = 0;
     this.rafId = null;
     this.lastUITime = -1;
+    this.levelEnded = false;
 
     this._setupEvents();
     this._setupResize();
@@ -107,6 +108,7 @@ export class Game {
     const heartPositions = MazeSolver.placeHearts(this.maze, totalHearts);
     this.hearts = heartPositions.map((pos, i) => new Heart(pos.row, pos.col, i));
     this.heartsCollected = 0;
+    this.levelEnded = false;
 
     this.renderer.resize();
     this.renderer.computeLayout(this.maze);
@@ -125,6 +127,8 @@ export class Game {
   }
 
   _endLevel(timeout) {
+    if (this.levelEnded) return;
+    this.levelEnded = true;
     this._stopLoop();
     this.input.disable();
     this.dpad.disable();
@@ -194,6 +198,7 @@ export class Game {
     while (this.accumulator >= FIXED_DT) {
       this._update(FIXED_DT);
       this.accumulator -= FIXED_DT;
+      if (this.levelEnded) return;
     }
 
     const alpha = this.accumulator / FIXED_DT;
