@@ -5,6 +5,7 @@ import { MazeGenerator } from './maze/MazeGenerator.js';
 import { MazeSolver } from './maze/MazeSolver.js';
 import { Player } from './entities/Player.js';
 import { Heart } from './entities/Heart.js';
+import { Bomb } from './entities/Bomb.js';
 import { InputSystem } from './systems/InputSystem.js';
 import { TimerSystem } from './systems/TimerSystem.js';
 import { CollisionSystem } from './systems/CollisionSystem.js';
@@ -12,6 +13,7 @@ import { LevelSystem } from './systems/LevelSystem.js';
 import { ScreenManager, SCREENS } from './ui/ScreenManager.js';
 import { MenuScreen } from './ui/MenuScreen.js';
 import { ResultScreen } from './ui/ResultScreen.js';
+import { CharacterSelectScreen } from './ui/CharacterSelectScreen.js';
 import { DPad } from './systems/DPad.js';
 
 const FIXED_DT = 1000 / 60;
@@ -26,13 +28,16 @@ export class Game {
     this.screenManager = new ScreenManager(this.eventBus);
     this.menuScreen = new MenuScreen(this.eventBus);
     this.resultScreen = new ResultScreen();
+    this.characterSelectScreen = new CharacterSelectScreen();
     this.dpad = new DPad();
 
     this.saveData = Storage.load();
+    this.characterId = this.saveData.selectedCharacter;
     this.currentLevel = 1;
     this.maze = null;
     this.player = null;
     this.hearts = [];
+    this.bomb = null;
     this.heartsCollected = 0;
     this.levelConfig = null;
 
@@ -41,20 +46,35 @@ export class Game {
     this.rafId = null;
     this.lastUITime = -1;
     this.levelEnded = false;
+    this.explosionTime = null;
 
     this._setupEvents();
     this._setupResize();
   }
 
+  get profile() {
+    return Storage.getProfile(this.saveData, this.characterId);
+  }
+
   start() {
     this.renderer.resize();
-    this.showMenu();
+    if (this.characterId) {
+      this.renderer.playerRenderer.setCharacter(this.characterId);
+      this.showMenu();
+    } else {
+      this.showCharacterSelect();
+    }
   }
 
   _setupEvents() {
     this.eventBus.on('heart:collected', () => {
       this.heartsCollected++;
       this.renderer.playerRenderer.triggerFire();
+    });
+
+    this.eventBus.on('bomb:used', () => {
+      // Redessiner le labyrinthe statique car des murs ont été cassés
+      this.renderer.drawStatic(this.maze);
     });
 
     this.eventBus.on('exit:reached', () => {
@@ -75,9 +95,33 @@ export class Game {
         this.dpad.layout(this.renderer.width, this.renderer.height);
       } else if (this.screenManager.is(SCREENS.MENU)) {
         this.showMenu();
+      } else if (this.screenManager.is(SCREENS.CHARACTER_SELECT)) {
+        this.showCharacterSelect();
       }
     };
     window.addEventListener('resize', onResize);
+  }
+
+  showCharacterSelect() {
+    this._stopLoop();
+    this.input.disable();
+    this.dpad.disable();
+    this.menuScreen.disableInput(this.renderer.uiCanvas);
+    this.resultScreen.disableInput(this.renderer.uiCanvas);
+    this.screenManager.switchTo(SCREENS.CHARACTER_SELECT);
+
+    this.renderer.drawOverlay((ctx, w, h) => {
+      this.characterSelectScreen.draw(ctx, w, h, this.saveData.profiles);
+    });
+
+    this.characterSelectScreen.enableInput(this.renderer.uiCanvas, (charId) => {
+      this.characterSelectScreen.disableInput(this.renderer.uiCanvas);
+      this.characterId = charId;
+      this.saveData.selectedCharacter = charId;
+      Storage.save(this.saveData);
+      this.renderer.playerRenderer.setCharacter(charId);
+      this.showMenu();
+    });
   }
 
   showMenu() {
@@ -85,16 +129,26 @@ export class Game {
     this.input.disable();
     this.dpad.disable();
     this.resultScreen.disableInput(this.renderer.uiCanvas);
+    this.characterSelectScreen.disableInput(this.renderer.uiCanvas);
     this.screenManager.switchTo(SCREENS.MENU);
 
+    const profile = this.profile;
+
     this.renderer.drawOverlay((ctx, w, h) => {
-      this.menuScreen.draw(ctx, w, h, this.saveData.unlockedLevel);
+      this.menuScreen.draw(ctx, w, h, profile.unlockedLevel, this.characterId, profile.bestTimes);
     });
 
-    this.menuScreen.enableInput(this.renderer.uiCanvas, (level) => {
-      this.menuScreen.disableInput(this.renderer.uiCanvas);
-      this.startLevel(level);
-    });
+    this.menuScreen.enableInput(
+      this.renderer.uiCanvas,
+      (level) => {
+        this.menuScreen.disableInput(this.renderer.uiCanvas);
+        this.startLevel(level);
+      },
+      () => {
+        this.menuScreen.disableInput(this.renderer.uiCanvas);
+        this.showCharacterSelect();
+      }
+    );
   }
 
   startLevel(level) {
@@ -109,6 +163,10 @@ export class Game {
     this.hearts = heartPositions.map((pos, i) => new Heart(pos.row, pos.col, i));
     this.heartsCollected = 0;
     this.levelEnded = false;
+    this.explosionTime = null;
+
+    // Le joueur porte la bombe avec lui
+    this.bomb = new Bomb();
 
     this.renderer.resize();
     this.renderer.computeLayout(this.maze);
@@ -117,16 +175,18 @@ export class Game {
     this.timer.start(timeLimit);
     this.input.enable();
     this.dpad.layout(this.renderer.width, this.renderer.height);
-    this.dpad.enable(this.renderer.uiCanvas, (dir) => {
-      this.input.moveQueue.push(dir);
-    });
+    this.dpad.enable(
+      this.renderer.uiCanvas,
+      (dir) => { this.input.moveQueue.push(dir); },
+      () => { this.input._bombPending = true; }
+    );
     this.screenManager.switchTo(SCREENS.GAME);
 
     this.lastUITime = -1;
     this._startLoop();
   }
 
-  _endLevel(timeout) {
+  _endLevel(timeout, killedByBomb = false) {
     if (this.levelEnded) return;
     this.levelEnded = true;
     this._stopLoop();
@@ -134,18 +194,19 @@ export class Game {
     this.dpad.disable();
     this.timer.stop();
 
-    const success = !timeout && this.heartsCollected >= this.levelConfig.requiredHearts;
+    const success = !timeout && !killedByBomb && this.heartsCollected >= this.levelConfig.requiredHearts;
     const timeUsed = this.levelConfig.timeLimit - this.timer.remaining;
+    const profile = this.profile;
 
     if (success) {
-      if (this.currentLevel >= this.saveData.unlockedLevel) {
-        this.saveData.unlockedLevel = this.currentLevel + 1;
+      if (this.currentLevel >= profile.unlockedLevel) {
+        profile.unlockedLevel = this.currentLevel + 1;
       }
-      const best = this.saveData.bestTimes[this.currentLevel];
+      const best = profile.bestTimes[this.currentLevel];
       if (!best || timeUsed < best) {
-        this.saveData.bestTimes[this.currentLevel] = Math.round(timeUsed * 10) / 10;
+        profile.bestTimes[this.currentLevel] = Math.round(timeUsed * 10) / 10;
       }
-      this.saveData.totalHearts += this.heartsCollected;
+      profile.totalHearts += this.heartsCollected;
       Storage.save(this.saveData);
     }
 
@@ -153,9 +214,11 @@ export class Game {
       level: this.currentLevel,
       success,
       timeout,
+      killedByBomb,
       heartsCollected: this.heartsCollected,
       heartsTotal: this.levelConfig.totalHearts,
       timeUsed,
+      characterId: this.characterId,
     };
 
     this.screenManager.switchTo(SCREENS.RESULT);
@@ -217,22 +280,53 @@ export class Game {
       this.player.moveTo(dir);
       this.collision.check(this.player, this.maze, this.hearts, this.levelConfig.requiredHearts);
     }
+
+    // Poser la bombe (espace ou bouton D-Pad)
+    if (this.input.getBombAction() && !this.bomb.placed && !this.bomb.exploded) {
+      this.bomb.place(this.player.row, this.player.col);
+    }
+
+    // Vérifier l'explosion de la bombe
+    const now = performance.now();
+    if (this.bomb.shouldExplode(now)) {
+      this.bomb.explode();
+      this.maze.breakWalls(this.bomb.row, this.bomb.col);
+      this.explosionTime = now;
+      this.eventBus.emit('bomb:used', this.bomb);
+
+      // Le joueur est trop proche → mort
+      const dr = Math.abs(this.player.row - this.bomb.row);
+      const dc = Math.abs(this.player.col - this.bomb.col);
+      if (dr + dc <= 2) {
+        this._endLevel(false, true);
+      }
+    }
   }
 
   _render(alpha) {
-    this.renderer.drawDynamic(this.player, this.hearts, alpha);
+    const now = performance.now();
+    this.renderer.drawDynamic(this.player, this.hearts, this.bomb, alpha, this.explosionTime, now);
 
-    // UI mise à jour chaque seconde
+    // UI mise à jour chaque seconde (ou plus souvent si bombe en cours)
     const sec = Math.floor(this.timer.remaining);
-    if (sec !== this.lastUITime || this.dpad.visible) {
+    const bombActive = this.bomb.placed && !this.bomb.exploded;
+    if (sec !== this.lastUITime || this.dpad.visible || bombActive) {
       this.lastUITime = sec;
+
+      let bombState = 'held';
+      if (this.bomb.exploded) bombState = 'exploded';
+      else if (this.bomb.placed) bombState = 'placed';
+
       this.renderer.drawUI({
         level: this.currentLevel,
         timeRemaining: this.timer.remaining,
         heartsCollected: this.heartsCollected,
+        heartsTotal: this.levelConfig.totalHearts,
         heartsRequired: this.levelConfig.requiredHearts,
+        bombState,
+        bombCountdown: bombActive ? this.bomb.countdown(now) : 0,
       });
-      this.dpad.draw(this.renderer.uiCtx);
+      this.dpad.draw(this.renderer.uiCtx, !this.bomb.placed && !this.bomb.exploded);
     }
   }
 }

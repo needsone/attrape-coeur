@@ -47,4 +47,19 @@ export class Maze {
   canMove(row, col, direction) {
     return (this.getCell(row, col) & direction) !== 0;
   }
+
+  // Casse les 4 murs autour d'une cellule (sauf les bordures externes)
+  breakWalls(row, col) {
+    const directions = [NORD, SUD, EST, OUEST];
+    for (const dir of directions) {
+      const { dr, dc } = DELTA[dir];
+      const nr = row + dr;
+      const nc = col + dc;
+      // Ne casser que si le voisin existe (pas un mur externe)
+      if (this.inBounds(nr, nc)) {
+        this.openWall(row, col, dir);
+        this.openWall(nr, nc, OPPOSITE[dir]);
+      }
+    }
+  }
 }

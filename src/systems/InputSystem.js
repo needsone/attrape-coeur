@@ -14,11 +14,16 @@ export class InputSystem {
     this.moveDelay = 150;
     this.lastMove = 0;
     this.active = false;
+    this._bombPending = false;
 
     this._onKeyDown = (e) => {
       if (KEY_MAP[e.key] !== undefined) {
         e.preventDefault();
         this.keys.add(e.key);
+      }
+      if (e.key === ' ') {
+        e.preventDefault();
+        this._bombPending = true;
       }
     };
     this._onKeyUp = (e) => {
@@ -56,10 +61,19 @@ export class InputSystem {
     window.addEventListener('touchend', this._onTouchEnd);
   }
 
+  getBombAction() {
+    if (this._bombPending) {
+      this._bombPending = false;
+      return true;
+    }
+    return false;
+  }
+
   disable() {
     this.active = false;
     this.keys.clear();
     this.moveQueue = [];
+    this._bombPending = false;
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
     window.removeEventListener('touchstart', this._onTouchStart);

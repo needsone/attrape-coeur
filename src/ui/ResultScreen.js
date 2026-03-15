@@ -1,3 +1,5 @@
+import { CHARACTERS } from './CharacterSelectScreen.js';
+
 export class ResultScreen {
   constructor() {
     this._onClick = null;
@@ -15,13 +17,24 @@ export class ResultScreen {
 
     if (data.success) {
       ctx.fillStyle = '#00E676';
-      ctx.fillText('Niveau terminé !', width / 2, height * 0.2);
+      ctx.fillText('Niveau terminé !', width / 2, height * 0.15);
+    } else if (data.killedByBomb) {
+      ctx.fillStyle = '#FF6D00';
+      ctx.fillText('Boom ! 💥', width / 2, height * 0.15);
     } else if (data.timeout) {
       ctx.fillStyle = '#FF5252';
-      ctx.fillText('Temps écoulé !', width / 2, height * 0.2);
+      ctx.fillText('Temps écoulé !', width / 2, height * 0.15);
     } else {
       ctx.fillStyle = '#FFD740';
-      ctx.fillText('Coeurs manquants !', width / 2, height * 0.2);
+      ctx.fillText('Coeurs manquants !', width / 2, height * 0.15);
+    }
+
+    // Personnage
+    const char = CHARACTERS[data.characterId];
+    if (char) {
+      const emojiSize = Math.min(50, width * 0.08);
+      ctx.font = `${emojiSize}px serif`;
+      ctx.fillText(char.emoji, width / 2, height * 0.26);
     }
 
     const infoSize = Math.min(22, width * 0.04);
@@ -32,14 +45,24 @@ export class ResultScreen {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
 
-    ctx.fillText(`Niveau : ${data.level}`, width / 2, height * 0.35);
-    ctx.fillText(`Temps : ${minutes}:${seconds.toString().padStart(2, '0')}`, width / 2, height * 0.43);
-    ctx.fillText(`Coeurs : ${data.heartsCollected} / ${data.heartsTotal}`, width / 2, height * 0.51);
+    ctx.fillText(`Niveau : ${data.level}`, width / 2, height * 0.38);
+    ctx.fillText(`Temps : ${minutes}:${seconds.toString().padStart(2, '0')}`, width / 2, height * 0.46);
+    ctx.fillText(`Coeurs : ${data.heartsCollected} / ${data.heartsTotal}`, width / 2, height * 0.54);
+
+    if (data.killedByBomb) {
+      ctx.fillStyle = '#FF8C00';
+      ctx.font = `${Math.min(16, width * 0.03)}px 'Segoe UI', system-ui, sans-serif`;
+      ctx.fillText('Fuis à plus de 2 cases avant l\'explosion !', width / 2, height * 0.61);
+    } else if (!data.success && data.heartsCollected < data.heartsTotal) {
+      ctx.fillStyle = '#FFC107';
+      ctx.font = `${Math.min(16, width * 0.03)}px 'Segoe UI', system-ui, sans-serif`;
+      ctx.fillText('Utilise la bombe 💣 pour ouvrir de nouveaux passages !', width / 2, height * 0.61);
+    }
 
     // Boutons
     const btnW = Math.min(200, width * 0.35);
     const btnH = 45;
-    const btnY = height * 0.68;
+    const btnY = height * 0.72;
 
     this._menuBtn = { x: width / 2 - btnW - 10, y: btnY, w: btnW, h: btnH };
     this._retryBtn = { x: width / 2 + 10, y: btnY, w: btnW, h: btnH };

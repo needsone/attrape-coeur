@@ -8,6 +8,8 @@ export class DPad {
     this.cx = 0;
     this.cy = 0;
     this.buttons = [];
+    this.bombButton = null;
+    this.bombPressed = false;
     this._listeners = [];
     this._repeatInterval = null;
     this._canvas = null;
@@ -29,9 +31,18 @@ export class DPad {
       { dir: OUEST, x: this.cx - s - gap,  y: this.cy,           w: s, h: s, label: '◀' },
       { dir: EST,   x: this.cx + s + gap,  y: this.cy,           w: s, h: s, label: '▶' },
     ];
+
+    // Bouton bombe à gauche du D-Pad
+    this.bombButton = {
+      x: this.cx - 2 * s - 2 * gap,
+      y: this.cy,
+      w: s,
+      h: s,
+      label: '💣',
+    };
   }
 
-  draw(ctx) {
+  draw(ctx, bombAvailable = true) {
     if (!this.visible || this.buttons.length === 0) return;
 
     for (const btn of this.buttons) {
@@ -57,6 +68,30 @@ export class DPad {
       ctx.textBaseline = 'middle';
       ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2);
     }
+
+    // Bouton bombe
+    if (this.bombButton) {
+      const btn = this.bombButton;
+      const isPressed = this.bombPressed;
+      ctx.fillStyle = isPressed
+        ? 'rgba(255, 100, 0, 0.9)'
+        : bombAvailable ? 'rgba(150, 60, 0, 0.7)' : 'rgba(60, 60, 60, 0.5)';
+      ctx.beginPath();
+      ctx.roundRect(btn.x, btn.y, btn.w, btn.h, 10);
+      ctx.fill();
+
+      ctx.strokeStyle = isPressed ? '#FF8800' : bombAvailable ? 'rgba(255, 180, 80, 0.7)' : 'rgba(100, 100, 100, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(btn.x, btn.y, btn.w, btn.h, 10);
+      ctx.stroke();
+
+      ctx.fillStyle = bombAvailable ? '#FFF' : 'rgba(150, 150, 150, 0.6)';
+      ctx.font = `${this.btnSize * 0.45}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2);
+    }
   }
 
   _hitTest(clientX, clientY) {
@@ -70,6 +105,15 @@ export class DPad {
       }
     }
     return null;
+  }
+
+  _hitTestBomb(clientX, clientY) {
+    if (!this.bombButton) return false;
+    const rect = this._canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const b = this.bombButton;
+    return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   }
 
   _startRepeat(dir, onDirection) {
@@ -90,7 +134,7 @@ export class DPad {
     clearInterval(this._repeatInterval);
   }
 
-  enable(canvas, onDirection) {
+  enable(canvas, onDirection, onBomb) {
     this._canvas = canvas;
     this._listeners = [];
 
@@ -107,11 +151,22 @@ export class DPad {
         e.preventDefault();
         e.stopPropagation();
         this._startRepeat(dir, onDirection);
+      } else if (onBomb && this._hitTestBomb(touch.clientX, touch.clientY)) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.bombPressed = true;
+        onBomb();
       }
     }, { passive: false });
 
-    addListener(canvas, 'touchend', () => this._stopRepeat());
-    addListener(canvas, 'touchcancel', () => this._stopRepeat());
+    addListener(canvas, 'touchend', () => {
+      this._stopRepeat();
+      this.bombPressed = false;
+    });
+    addListener(canvas, 'touchcancel', () => {
+      this._stopRepeat();
+      this.bombPressed = false;
+    });
 
     // Souris (pour desktop aussi)
     addListener(canvas, 'mousedown', (e) => {
@@ -119,11 +174,16 @@ export class DPad {
       if (dir !== null) {
         e.preventDefault();
         this._startRepeat(dir, onDirection);
+      } else if (onBomb && this._hitTestBomb(e.clientX, e.clientY)) {
+        e.preventDefault();
+        this.bombPressed = true;
+        onBomb();
       }
     });
 
     addListener(window, 'mouseup', () => {
       if (this.pressed !== null) this._stopRepeat();
+      this.bombPressed = false;
     });
   }
 

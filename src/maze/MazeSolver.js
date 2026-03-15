@@ -88,4 +88,47 @@ export class MazeSolver {
 
     return deadEnds.slice(0, count).map(({ row, col }) => ({ row, col }));
   }
+
+  // Place la bombe sur une cellule stratégique : pas sur le chemin, pas sur l'entrée/sortie, pas sur un coeur
+  static placeBomb(maze, heartPositions) {
+    const path = this.findPath(maze);
+    const { rows, cols } = maze;
+    const heartSet = new Set(heartPositions.map(h => maze.index(h.row, h.col)));
+    const entryIdx = maze.index(maze.entry.row, maze.entry.col);
+    const exitIdx = maze.index(maze.exit.row, maze.exit.col);
+
+    // Chercher une cellule qui a le plus de murs (pour maximiser l'utilité de la bombe)
+    let best = null;
+    let bestWalls = -1;
+
+    for (let r = 1; r < rows - 1; r++) {
+      for (let c = 1; c < cols - 1; c++) {
+        const idx = maze.index(r, c);
+        if (path.has(idx)) continue;
+        if (heartSet.has(idx)) continue;
+        if (idx === entryIdx || idx === exitIdx) continue;
+
+        // Compter les murs fermés internes
+        let wallCount = 0;
+        for (const dir of DIRECTIONS) {
+          if (!maze.canMove(r, c, dir)) {
+            const { dr, dc } = DELTA[dir];
+            if (maze.inBounds(r + dr, c + dc)) wallCount++;
+          }
+        }
+
+        if (wallCount > bestWalls) {
+          bestWalls = wallCount;
+          best = { row: r, col: c };
+        }
+      }
+    }
+
+    // Fallback : si rien trouvé, placer au centre
+    if (!best) {
+      best = { row: Math.floor(rows / 2), col: Math.floor(cols / 2) };
+    }
+
+    return best;
+  }
 }

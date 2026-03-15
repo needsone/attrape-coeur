@@ -14,7 +14,7 @@ export class CollisionSystem {
       if (heart.collected) collected++;
     }
 
-    // Arrivée à la sortie uniquement si assez de coeurs
+    // Arrivée à la sortie uniquement si TOUS les coeurs collectés
     if (player.isAt(maze.exit.row, maze.exit.col) && collected >= requiredHearts) {
       this.eventBus.emit('exit:reached');
     }

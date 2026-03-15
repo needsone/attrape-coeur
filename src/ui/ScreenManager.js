@@ -1,4 +1,5 @@
 export const SCREENS = {
+  CHARACTER_SELECT: 'character_select',
   MENU: 'menu',
   GAME: 'game',
   RESULT: 'result',

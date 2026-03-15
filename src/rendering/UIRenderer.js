@@ -26,10 +26,26 @@ export class UIRenderer {
     }
     ctx.fillText(timeStr, width / 2, hudY);
 
-    // Coeurs
+    // Coeurs + Bombe à droite
     ctx.textAlign = 'right';
     ctx.fillStyle = '#FF6B9D';
-    const heartStr = `♥ ${state.heartsCollected}/${state.heartsRequired}`;
+    const heartStr = `♥ ${state.heartsCollected}/${state.heartsTotal}`;
     ctx.fillText(heartStr, width - 15, hudY);
+
+    // Indicateur bombe sous les coeurs
+    const bombY = hudY + fontSize + 4;
+    const smallFont = Math.min(14, width * 0.025);
+    ctx.font = `${smallFont}px 'Segoe UI', system-ui, sans-serif`;
+    if (state.bombState === 'exploded') {
+      ctx.fillStyle = '#555';
+      ctx.fillText('💣 Utilisée', width - 15, bombY);
+    } else if (state.bombState === 'placed') {
+      const cd = state.bombCountdown.toFixed(1);
+      ctx.fillStyle = state.bombCountdown < 0.7 ? '#FF1744' : '#FF6D00';
+      ctx.fillText(`💣 ${cd}s`, width - 15, bombY);
+    } else {
+      ctx.fillStyle = '#FFC107';
+      ctx.fillText('💣 [Espace]', width - 15, bombY);
+    }
   }
 }
